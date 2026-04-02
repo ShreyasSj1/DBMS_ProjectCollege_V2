@@ -1,4 +1,2 @@
 Flask
 Flask-Login
-Flask-Cors
-gunicorn
