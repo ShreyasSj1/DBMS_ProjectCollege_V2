@@ -1,0 +1,111 @@
+<!-- CHATBOT WIDGET -->
+<div id="chatbot-container" class="chatbot-container">
+    <button id="chatbot-toggle" class="chatbot-toggle" aria-label="Toggle AI Coach">
+        <i class="fa-solid fa-robot"></i>
+    </button>
+    <div id="chatbot-window" class="chatbot-window hidden">
+        <div class="chatbot-header">
+            <h3>AI Fitness Coach</h3>
+            <button id="chatbot-close" class="chatbot-close" aria-label="Close Chat">✕</button>
+        </div>
+        <div id="chatbot-messages" class="chatbot-messages">
+            <div class="chat-message ai-message">
+                Hello! I'm your AI Fitness Coach. I can see your daily logs and goals. How can I help you today?
+            </div>
+        </div>
+        <div class="chatbot-input-area">
+            <input type="text" id="chatbot-input" placeholder="Ask about diet, workout, etc..." autocomplete="off" />
+            <button id="chatbot-send">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Load FontAwesome for the robot icon if not already loaded in the head -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    const toggleBtn = document.getElementById("chatbot-toggle");
+    const closeBtn = document.getElementById("chatbot-close");
+    const chatWindow = document.getElementById("chatbot-window");
+    const chatInput = document.getElementById("chatbot-input");
+    const chatSend = document.getElementById("chatbot-send");
+    const chatMessages = document.getElementById("chatbot-messages");
+
+    function toggleChat() {
+        chatWindow.classList.toggle("hidden");
+        if (!chatWindow.classList.contains("hidden")) {
+            chatInput.focus();
+        }
+    }
+
+    toggleBtn.addEventListener("click", toggleChat);
+    closeBtn.addEventListener("click", toggleChat);
+
+    function appendMessage(sender, text) {
+        const msgDiv = document.createElement("div");
+        msgDiv.className = `chat-message ${sender}-message`;
+        msgDiv.innerText = text;
+        chatMessages.appendChild(msgDiv);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    function addTypingIndicator() {
+        const typingDiv = document.createElement("div");
+        typingDiv.className = "chat-message ai-message typing-indicator";
+        typingDiv.id = "typing-indicator";
+        typingDiv.innerHTML = "<span>.</span><span>.</span><span>.</span>";
+        chatMessages.appendChild(typingDiv);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    function removeTypingIndicator() {
+        const typingDiv = document.getElementById("typing-indicator");
+        if (typingDiv) {
+            typingDiv.remove();
+        }
+    }
+
+    async function sendMessage() {
+        const text = chatInput.value.trim();
+        if (!text) return;
+
+        appendMessage("user", text);
+        chatInput.value = "";
+        
+        addTypingIndicator();
+
+        try {
+            const response = await fetch("/api/chat", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({ message: text })
+            });
+
+            removeTypingIndicator();
+
+            if (response.ok) {
+                const data = await response.json();
+                appendMessage("ai", data.response);
+            } else {
+                appendMessage("ai", "Sorry, I am having trouble connecting right now.");
+            }
+        } catch (error) {
+            removeTypingIndicator();
+            appendMessage("ai", "An error occurred. Please try again.");
+            console.error(error);
+        }
+    }
+
+    chatSend.addEventListener("click", sendMessage);
+    chatInput.addEventListener("keypress", function(e) {
+        if (e.key === "Enter") {
+            sendMessage();
+        }
+    });
+});
+</script>

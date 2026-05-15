@@ -5,6 +5,9 @@ from datetime import date, datetime, timedelta, timezone
 from functools import wraps
 from urllib.parse import urljoin, urlparse
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from flask import (
     Flask,
     abort,
@@ -14,6 +17,7 @@ from flask import (
     request,
     session,
     url_for,
+    jsonify,
 )
 from flask_login import (
     LoginManager,
@@ -1292,6 +1296,67 @@ def report():
 
 
 init_db()
+
+
+# ================= CHATBOT API =================
+@app.route("/api/chat", methods=["POST"])
+@login_required
+def chat_api():
+    message = request.json.get("message", "")
+    if not message:
+        return jsonify({"error": "Message is required"}), 400
+
+    api_key = os.environ.get("GROQ_API_KEY")
+    if not api_key:
+        return jsonify({"response": "The Groq API key is not configured. Please set GROQ_API_KEY environment variable."}), 200
+
+    try:
+        import groq
+        client = groq.Groq(api_key=api_key)
+        
+        # Build context
+        today = date.today()
+        one_week_ago = (today - timedelta(days=7)).isoformat()
+        db = get_db()
+        
+        # Profile
+        profile = f"Name: {current_user.name}, Age: {current_user.age or 'N/A'}, Height: {current_user.height or 'N/A'}, Weight: {current_user.weight or 'N/A'}."
+        
+        # Food past 7 days
+        foods = db.execute("SELECT date, meal, food, calories FROM food_log WHERE user_id = ? AND date >= ? ORDER BY date DESC", (current_user.id, one_week_ago)).fetchall()
+        food_str = ", ".join([f"[{f['date']}] {f['meal']}: {f['food']} ({f['calories']} kcal)" for f in foods]) if foods else "No food logged in the past week."
+        
+        # Gym past 7 days
+        gyms = db.execute("SELECT date, exercise, calories FROM gym_log WHERE user_id = ? AND date >= ? ORDER BY date DESC", (current_user.id, one_week_ago)).fetchall()
+        gym_str = ", ".join([f"[{g['date']}] {g['exercise']} ({g['calories']} kcal)" for g in gyms]) if gyms else "No gym activity in the past week."
+        
+        db.close()
+        
+        system_prompt = f"""You are an AI Fitness Coach integrated into a tracking app called VitalLog. 
+You provide friendly, concise, and helpful advice on diet, workout, and fitness.
+Be direct and keep responses under 4 sentences.
+Here is the user's context for the past week:
+Profile: {profile}
+Recent Food Logs: {food_str}
+Recent Gym Activity: {gym_str}
+"""
+
+        completion = client.chat.completions.create(
+            model="llama3-8b-8192",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": message}
+            ],
+            temperature=0.7,
+            max_tokens=200,
+        )
+        
+        response_text = completion.choices[0].message.content
+        return jsonify({"response": response_text})
+
+    except Exception as e:
+        print(f"Chatbot error: {e}")
+        return jsonify({"error": "Failed to generate response"}), 500
 
 
 # ================= RUN =================
